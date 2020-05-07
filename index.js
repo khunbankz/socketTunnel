@@ -1,198 +1,236 @@
 var net = require('net');
+var uuid = require("uuid");
 
-// // parse "80" and "localhost:80" or even "42mEANINg-life.com:80"
-// var addrRegex = /^(([a-zA-Z\-\.0-9]+):)?(\d+)$/;
+let tblConn = {};
+let tblConnected = [];
 
-// var addr = {
-//     from: addrRegex.exec(process.argv[2]),
-//     to: addrRegex.exec(process.argv[3])
-// };
+net.createServer(function (from) {
+    console.log('Client connect, Client local address : ' +
+        from.localAddress + ':' +
+        from.localPort + '. client remote address : ' +
+        from.remoteAddress +
+        ':' +
+        from.remotePort);
 
-// if (!addr.from || !addr.to) {
-//     console.log('Usage: <from> <to>');
-//     return;
-// }
+    from.skId = uuid.v4();
+    send("clientId=" + from.skId);
+    // from.registerServerId = "";
 
-// net.createServer(function(from) {
-//     var to = net.createConnection({
-//         host: addr.to[2],
-//         port: addr.to[3]
-//     });
-//     from.pipe(to);
-//     to.pipe(from);
-// }).listen(addr.from[3], addr.from[2]);
-
-let tblConn = {
-    
-};
-let tblConnected = {
-    
-};
-
-net.createServer(function(from) {
-    console.log('Client connect, Client local address : ' 
-    + from.localAddress + ':' 
-    + from.localPort + '. client remote address : ' 
-    + from.remoteAddress 
-    + ':' 
-    + from.remotePort);
-
-
-    
-    // from.end("goodbye\n");
-    // from.on('data', function(data) {
-    //     console.log(11, data.toString());
-        
-    // });
-    
     from.on('data', operate);
-    
 
-    function operate(data){
+    from.setTimeout(6000);
+    from.on('timeout', () => {
+        console.log('socket timeout', from.skId);
+        disconnect();
+    });
+
+    function operate(data) {
         let line = readline(data);
-        if( line ){
-            if(line.startsWith('server:')){
+        if (line) {
+            if (line.startsWith('server:')) {
+                from.skId = "s-" + from.skId;
+
                 from.off('data', operate);
+                from.on('data', keepAlive);
+
                 let id = line.substring(7);
 
-                if(tblConn[id] || tblConnected[id]){
-                    console.log("id=" + id  + " already exist");
-                    send("id=" + id  + " already exist");
-                    disconnect();
+                if (tblConn[id]) {
+                    console.log("id=" + id + " already exist");
+                    disconnect("id=" + id + " already exist");
 
-                }else{
-                    from.registerServerId=id;
+                } else {
+                    // from.registerServerId=id;
                     tblConn[id] = from;
 
                     console.log("registed server with id=" + id);
                     send("registed server with id=" + id);
                 }
-                
-            }else if(line.startsWith('connect:')){
+
+            } else if (line.startsWith('connect:')) {
+                from.skId = "c-" + from.skId;
+
                 from.off('data', operate);
                 let id = line.substring(8);
 
                 let to = tblConn[id];
-                if( to ){
+                if (to) {
                     delete tblConn[id];
-                    from.pipe(to);
-                    to.pipe(from);
-                    console.log("connected to server id=" + id);
-                    tblConnected[id] = {
-                        "client": from.remoteAddress + ':' + from.remotePort,
-                        "server": to.remoteAddress + ':' + to.remotePort
+                    let listenerData = to.listeners('data');
+                    let selectedRemoveKeepAlive;
+                    for (let i = 0; i < listenerData.length; i++) {
+                        if (listenerData[i].name === "keepAlive") {
+                            selectedRemoveKeepAlive = listenerData[i];
+                            break;
+                        }
                     }
+                    if (selectedRemoveKeepAlive) {
+                        to.off('data', selectedRemoveKeepAlive);
+                    }
+                    // to.pipe(from);
+                    // from.pipe(to);
 
-                   
-                    // send("connected to server id=" + id);
+                    to.on('data', (data) => {
+                        // console.log(1, data, data.toString());
+                        from.write(data);
+                    });
+
+                    from.on('data', (data) => {
+                        // console.log(2, data, data.toString());
+                        to.write(data)
+                    });
+
+                    tblConnected.push({
+                        "serverId": id,
+                        "server": {
+                            "socket": to,
+                            "socketId": to.skId
+                        },
+                        "client": {
+                            "socket": from,
+                            "socketId": from.skId
+                        }
+                    });
+
+                    console.log("connected to server id=" + id);
+                    send("connected to server id=" + id);
+                    // send("connected", to);
 
                 } else {
                     console.log("cannot connect to server id=" + id);
-                    send("cannot connect to server id=" + id);
-                    disconnect();
+                    disconnect("cannot connect to server id=" + id);
                 }
 
-            }else if(line.startsWith('admin:aisadmin')){
-                send("serverId registed: " + Object.keys(tblConn) );
-                // send("server registed: " +  JSON.stringify(tblConn) );
-                send("connections: " + JSON.stringify(tblConnected) );
+            } else if (line.startsWith('admin:aisadmin')) {
+                let k = Object.keys(tblConn);
+                send("serverId registed: " + k);
+                send("serverId registed size: " + k.length);
 
-            }else{
+                // send("server registed: " +  JSON.stringify(tblConn) );
+                send("connections: " + JSON.stringify(tblConnected, function (key, value) {
+                    if (key == "socket") return undefined;
+                    else return value;
+                }));
+                send("connections size: " + tblConnected.length);
+                send("end");
+
+            } else {
                 send("command fail, please send command server:$id OR connect:$id");
             }
         }
     }
-    
-    // function register(data) {
-    //     let line = readline(data);
-    //     if( line ){
-    //         if(line.startsWith('r:')){
-    //             from.off('data', register);
-    //             let id = line.substring(2);
-    //             tblConn[id] = from;
-    //             console.log("registed connection with id=" + id);
 
-    //             from.on('data', bind);
-    //             send("registed connection with id=" + id);
-    //         }else{
-    //             send("please register first, send register with msg \"r:$id\"");
-    //         }
-    //     }
-    // }
-
-
-    // function bind(data) {
-    //     let line = readline(data);
-    //     if( line ){
-    //         if(line.startsWith('c:')){
-    //             from.off('data', bind);
-    //             let id = line.substring(2);
-
-    //             let to = tblConn[id];
-    //             if( to ){
-    //                 from.pipe(to);
-    //                 to.pipe(from);
-    //                 console.log("bind connection with id=" + id);
-    //                 send("bind connection with id=" + id);
-    //             }else{
-    //                 console.log("cannot bind connection with id=" + id);
-    //                 send("cannot bind connection with id=" + id);
-    //             }
-                
-    //         }
-    //     }
-    // }
+    function keepAlive(data) {
+        let line = readline(data);
+        if (line) {
+            if (line === 'keepAlive') {
+                send("keepAlive");
+            }
+        } else {
+            send("command not allowed");
+        }
+    }
 
 
     let bufferData = Buffer.alloc(0);
-    function readline(data){
+
+    function readline(data) {
         bufferData = Buffer.concat([bufferData, data]);
         // console.log(bufferData,bufferData.toString());
-        
-        let i = bufferData.indexOf('\r');
-        if( i === -1 ) i = bufferData.indexOf('\n');
 
-        if( i > -1 ) {
-            let r = bufferData.slice(0,i).toString();
-            bufferData = bufferData.slice(i+1);
+        let i = bufferData.indexOf('\r\n');
+        if (i === -1) i = bufferData.indexOf('\n');
+
+        if (i > -1) {
+            let r = bufferData.slice(0, i);
+            // console.log(bufferData[ i + 1 ]);
+
+            bufferData = bufferData.slice(i + 2);
             // console.log("remain=",bufferData);
-            return r;
-        }else{
+            return r.toString();
+        } else {
             return undefined;
         }
     }
 
-    function send(txt){
-        from.write( txt + "\r\n" );
-    }
-
-    function disconnect(){
-        setImmediate(()=>{
-            from.destroy();
-        })
-    }
-
-
-    from.on('end', function() {
-        console.log('client disconnected');
-
-        if(from.registerServerId){
-            if( tblConn[from.registerServerId] ){
-                delete tblConn[from.registerServerId];
-                console.log('purge '+from.registerServerId);
-            }
+    function send(txt, socket) {
+        if (socket) {
+            socket.write(txt + "\r\n");
+        } else {
+            from.write(txt + "\r\n");
         }
-        
+
+    }
+
+
+    function disconnect(txt) {
+        // setImmediate(()=>{
+        //     from.destroy();
+        // })
+        if (txt) {
+            from.end(txt + "\r\n");
+        } else {
+            from.end();
+        }
+    }
+
+
+    from.on('end', function () {
+        console.log('Client disconnected', "id=" + from.skId);
+        clearConn(from);
     });
 
-    
-   
-}).listen(12345, "0.0.0.0", function() { //'listening' listener
+    from.on("error", (err) => {
+        console.log("Client socket error", "id=" + from.skId);
+        clearConn(from);
+    });
+
+
+}).listen(10001, "0.0.0.0", function () { //'listening' listener
     console.log('server bound');
 });
 
 
-setTimeout(() => {
-    console.log(tblConn);
-    
+function clearConn(from) {
+    // if(from.registerServerId){
+    //     if( tblConn[from.registerServerId] ){
+    //         delete tblConn[from.registerServerId];
+    //         console.log('purge serverId='+from.registerServerId);
+    //     }
+    // }
+    for (var key in tblConn) {
+        let registeredSV = tblConn[key];
+        if (registeredSV === from) {
+            delete tblConn[key];
+            console.log('purge register serverId=' + key + ' clientId=' + from.skId);
+            break;
+        }
+    }
+
+    let removeIndex;
+    for (var i = 0, len = tblConnected.length; i < len; i++) {
+        if (tblConnected[i].server.socketId === from.skId) {
+            removeIndex = i;
+            tblConnected[i].client.socket.end();
+            break;
+
+        } else if (tblConnected[i].client.socketId === from.skId) {
+            removeIndex = i;
+            tblConnected[i].server.socket.end();
+            break;
+        }
+    }
+
+    if (removeIndex !== undefined) {
+        let r = tblConnected.splice(removeIndex, 1)[0];
+        console.log("Purge connection serverId=" + r.serverId + " server:" + r.server.socketId + " <=> client:" + r.client.socketId);
+
+    }
+}
+
+setInterval(() => {
+    // console.log(tblConnected);
+
+    // tblConnected.z1.c.write( "txt" + "\r\n" );
+    // tblConnected.z1.s.write( "txt" + "\r\n" );
 }, 1000);

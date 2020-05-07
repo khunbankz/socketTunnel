@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "dependencies": {
-    "net": "^1.0.2"
+    "net": "^1.0.2",
+    "uuid": "^7.0.3"
   },
   "devDependencies": {},
   "scripts": {
