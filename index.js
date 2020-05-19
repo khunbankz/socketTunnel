@@ -1,6 +1,8 @@
 var net = require('net');
 var uuid = require("uuid");
+var dateFormat = require('dateformat');
 
+let df = "dd/mm/yyyy HH:MM:ss";
 let tblConn = {};
 let tblConnected = [];
 
@@ -35,13 +37,16 @@ net.createServer(function (from) {
 
                 let id = line.substring(7);
 
-                if (tblConn[id]) {
+                if ( tblConn[id] ) {
                     console.log("id=" + id + " already exist");
                     disconnect("id=" + id + " already exist");
 
                 } else {
                     // from.registerServerId=id;
-                    tblConn[id] = from;
+                    tblConn[id] = {
+                        "socket" : from,
+                        "date" : new Date()
+                    };
 
                     console.log("registed server with id=" + id);
                     send("registed server with id=" + id);
@@ -56,6 +61,7 @@ net.createServer(function (from) {
                 let to = tblConn[id];
                 if (to) {
                     delete tblConn[id];
+                    to = to.socket;
                     let listenerData = to.listeners('data');
                     let selectedRemoveKeepAlive;
                     for (let i = 0; i < listenerData.length; i++) {
@@ -82,6 +88,7 @@ net.createServer(function (from) {
 
                     tblConnected.push({
                         "serverId": id,
+                        "date" : new Date(),
                         "server": {
                             "socket": to,
                             "socketId": to.skId
@@ -103,14 +110,12 @@ net.createServer(function (from) {
 
             } else if (line.startsWith('admin:aisadmin')) {
                 let k = Object.keys(tblConn);
-                send("serverId registed: " + k);
+                // send("serverId registed: " + k);
+                send("serverId: " + JSON.stringify(tblConn, jsonToString,2));
                 send("serverId registed size: " + k.length);
 
                 // send("server registed: " +  JSON.stringify(tblConn) );
-                send("connections: " + JSON.stringify(tblConnected, function (key, value) {
-                    if (key == "socket") return undefined;
-                    else return value;
-                }));
+                send("connections: " + JSON.stringify(tblConnected, jsonToString,2));
                 send("connections size: " + tblConnected.length);
                 send("end");
 
@@ -187,9 +192,28 @@ net.createServer(function (from) {
 
 
 }).listen(10001, "0.0.0.0", function () { //'listening' listener
-    console.log('server bound');
+    console.log('server bound port', 10001);
 });
 
+function jsonToString(key, value) {
+    if (key === "socket") {
+        return value.remoteAddress + ':' + value.remotePort;
+    }else if(key === "date"){
+        return dateFormat(value, df) + " (" + msToTime(Date.now() - this[key].getTime() )+")";
+    }else return value;
+}
+
+function msToTime(duration) {
+    let seconds = Math.floor((duration / 1000) % 60),
+      minutes = Math.floor((duration / (1000 * 60)) % 60),
+      hours = Math.floor((duration / (1000 * 60 * 60)) % 24);
+  
+    hours = (hours < 10) ? "0" + hours : hours;
+    minutes = (minutes < 10) ? "0" + minutes : minutes;
+    seconds = (seconds < 10) ? "0" + seconds : seconds;
+  
+    return hours + ":" + minutes + ":" + seconds ;
+  }
 
 function clearConn(from) {
     // if(from.registerServerId){
@@ -199,7 +223,7 @@ function clearConn(from) {
     //     }
     // }
     for (var key in tblConn) {
-        let registeredSV = tblConn[key];
+        let registeredSV = tblConn[key].socket;
         if (registeredSV === from) {
             delete tblConn[key];
             console.log('purge register serverId=' + key + ' clientId=' + from.skId);
@@ -228,9 +252,9 @@ function clearConn(from) {
     }
 }
 
-setInterval(() => {
+// setInterval(() => {
     // console.log(tblConnected);
 
     // tblConnected.z1.c.write( "txt" + "\r\n" );
     // tblConnected.z1.s.write( "txt" + "\r\n" );
-}, 1000);
+// }, 1000);
