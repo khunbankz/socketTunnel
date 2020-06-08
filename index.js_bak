@@ -23,8 +23,7 @@ net.createServer(function (from) {
     from.setTimeout(6000);
     from.on('timeout', () => {
         console.log('socket timeout', from.skId);
-        from.destroy();
-        clearConn(from);
+        disconnect();
     });
 
     function operate(data) {
@@ -173,8 +172,6 @@ net.createServer(function (from) {
         // setImmediate(()=>{
         //     from.destroy();
         // })
-        // console.log("END=", from.skId);
-        
         if (txt) {
             from.end(txt + "\r\n");
         } else {
@@ -182,30 +179,25 @@ net.createServer(function (from) {
         }
     }
 
-    
-    // from.on('close', function (err) {
-    //     console.log('Client close', err);
-    // });
+
     from.on('end', function () {
         console.log('Client disconnected', "id=" + from.skId);
         clearConn(from);
-        // console.log( from.destroyed );
     });
 
     from.on("error", (err) => {
         console.log("Client socket error", "id=" + from.skId);
         clearConn(from);
-        // console.log( from.destroyed );
     });
 
 
 }).listen(10001, "0.0.0.0", function () { //'listening' listener
-    console.log('server bound port', 10001);
+    console.log('server bound');
 });
 
 function jsonToString(key, value) {
     if (key === "socket") {
-        return value.remoteAddress + ":" + value.remotePort + " ("+ value.skId +")";
+        return value.remoteAddress + ':' + value.remotePort + " ("+ value.skId +")";
     }else if(key === "date"){
         return dateFormat(value, df) + " (" + msToTime(Date.now() - this[key].getTime() )+")";
     }else return value;
@@ -258,12 +250,11 @@ function clearConn(from) {
         console.log("Purge connection serverId=" + r.serverId + " server:" + r.server.socketId + " <=> client:" + r.client.socketId);
 
     }
-    // console.log(from.skId, from.destroyed);
 }
 
-// setInterval(() => {
+setInterval(() => {
     // console.log(tblConnected);
 
     // tblConnected.z1.c.write( "txt" + "\r\n" );
     // tblConnected.z1.s.write( "txt" + "\r\n" );
-// }, 1000);
+}, 1000);

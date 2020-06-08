@@ -4,7 +4,7 @@ var path = require('path');
 var bodyParser = require('body-parser');
 const WebSocketServer = require('websocket').server;
 const axios = require('axios');
-
+var dateFormat = require('dateformat');
 
 const serverWS = http.createServer();
 serverWS.listen(10002);
@@ -29,13 +29,13 @@ wsServer.on('request', function (request) {
     id = message.utf8Data;
     storeCon[id] = connection;
     // console.log(Object.keys(storeCon)[0] === 'x',storeCon["x"]);
-    console.log("register ws id=", robotId);
+    console.log("register ws id=", id);
   });
 
   connection.on('close', function (reasonCode, description) {
     if(id){
       storeCon[id] = undefined;
-      console.log("delete ws id=", robotId);
+      console.log("delete ws id=", id);
     }
   });
 });
@@ -78,28 +78,36 @@ app.post('/ircamera/thermaldata/', async (req, res, next) => {
   if(storeCon[robotId]){
     storeCon[robotId].send(req.rawBody.toString());
   }else{
-    console.log("not found ws id=", robotId);
+    // console.log("not found ws id=", robotId);
   }
 
-  let resp = await axios.post('http://119.192.60.205:5002/ircamera/thermaldata/', req.body, {
-    validateStatus: false,
-    timeout: 1000,
-    headers: {
-      'accept-charset': req.headers['accept-charset'],
-      'x-environment': req.headers['x-environment'],
-      'accept': req.headers['accept'],
-      'accept_language': req.headers['accept_language'],
-      'content-type': req.headers['content-type'],
-      'user-agent': req.headers['user-agent'],
-      'accept-encoding': req.headers['accept-encoding'],
-    }
-  });
-  console.log(resp);
+  try {
+    let resp = await axios.post('http://119.192.60.205:5002/ircamera/thermaldata/', req.body, {
+      validateStatus: false,
+      timeout: 500,
+      headers: {
+        'accept-charset': req.headers['accept-charset'],
+        'x-environment': req.headers['x-environment'],
+        'accept': req.headers['accept'],
+        'accept_language': req.headers['accept_language'],
+        'content-type': req.headers['content-type'],
+        'user-agent': req.headers['user-agent'],
+        'accept-encoding': req.headers['accept-encoding'],
+      }
+    });
+    res.json(resp.data);
+
+  } catch (error) {
+    let x = dateFormat(new Date(), "yyyy-mm-dd_HH:MM:ss") + " Success";
+    console.log("error", x);
+    res.json({ 
+      "errCode": 0,
+      "errMsg": x,
+      "cordinate": [ 320, 240 ] 
+    });
+  }
+
   
-
-  res.json({
-
-  });
 });
 
 // catch 404 and forward to error handler
